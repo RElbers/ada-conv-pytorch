@@ -1,0 +1,11 @@
+*.png
+*.jpg
+*.webp
+*.pyc
+.idea/
+*.gif
+imgs/
+*/logs/
+logs/
+*.ckpt
+.logs_old/
