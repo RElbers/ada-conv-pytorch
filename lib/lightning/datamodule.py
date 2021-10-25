@@ -30,14 +30,14 @@ class DataModule(pl.LightningDataModule):
         style_files, test_style_files = self.get_files(style, test_style, batch_size)
 
         train_transforms = self.train_transforms()
-        self.train_dataset = StylizationDataset(content_files, style_files,
-                                                style_transform=train_transforms['style'],
-                                                content_transform=train_transforms['content'])
+        self.train_dataset = EndlessDataset(content_files, style_files,
+                                            style_transform=train_transforms['style'],
+                                            content_transform=train_transforms['content'])
 
         test_transforms = self.test_transforms()
-        self.test_dataset = EndlessDataset(test_content_files, test_style_files,
-                                           style_transform=test_transforms['style'],
-                                           content_transform=test_transforms['content'])
+        self.test_dataset = StylizationDataset(test_content_files, test_style_files,
+                                               style_transform=test_transforms['style'],
+                                               content_transform=test_transforms['content'])
 
         self.batch_size = batch_size
         self.test_batch_size = min(len(test_content_files), len(test_style_files), batch_size)
