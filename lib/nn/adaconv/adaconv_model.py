@@ -148,8 +148,8 @@ def _conv(in_channels, out_channels, kernel_size=3, padding_mode='reflect'):
                      padding_mode=padding_mode)
 
 
-def _upsample(scale=2, mode='bilinear'):
-    return nn.Upsample(scale_factor=scale, mode=mode, align_corners=False)
+def _upsample(scale=2, mode='nearest'):
+    return nn.Upsample(scale_factor=scale, mode=mode)
 
 
 def _downsample(scale=2):
