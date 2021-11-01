@@ -1,15 +1,13 @@
+import warnings
+
 from torch import nn
 from torchvision import models
 from torchvision.transforms import transforms
 
 
 class VGGEncoder(nn.Module):
-    def __init__(self, normalize=True, include_activation=False):
+    def __init__(self, normalize=True):
         super().__init__()
-        self.include_activation = include_activation
-        self.vgg = models.vgg19(pretrained=True).features
-        self.out_channels = 512
-        self.scale_factor = 8
 
         if normalize:
             mean = [0.485, 0.456, 0.406]
@@ -18,21 +16,25 @@ class VGGEncoder(nn.Module):
         else:
             self.normalize = nn.Identity()
 
+        content_layers = {'relu4_1'}
+        style_layers = {'relu1_1', 'relu2_1', 'relu3_1', 'relu4_1'}
+        vgg = models.vgg19(pretrained=True)
+        blocks, block_names, scale_factor, out_channels = extract_blocks(vgg.features, content_layers.union(style_layers))
+
+        self.blocks = nn.ModuleList(blocks)
+        self.block_names = block_names
+        self.scale_factor = scale_factor
+        self.out_channels = out_channels
+
     def forward(self, xs):
         xs = self.normalize(xs)
 
-        if self.include_activation:
-            f1 = self.vgg[:2](xs)
-            f2 = self.vgg[2:7](f1)
-            f3 = self.vgg[7:12](f2)
-            f4 = self.vgg[12:21](f3)
-        else:
-            f1 = self.vgg[:1](xs)
-            f2 = self.vgg[1:6](f1)
-            f3 = self.vgg[6:11](f2)
-            f4 = self.vgg[11:20](f3)
+        features = []
+        for block in self.blocks:
+            xs = block(xs)
+            features.append(xs)
 
-        return [f1, f2, f3, f4]
+        return features
 
 
 class VGGDecoder(nn.Module):
@@ -80,5 +82,37 @@ def _conv(in_channels, out_channels, kernel_size=3, padding_mode='reflect'):
                      padding_mode=padding_mode)
 
 
-def _upsample(scale_factor=2, mode='bilinear'):
+def _upsample(scale_factor=2, mode='nearest'):
     return nn.Upsample(scale_factor=scale_factor, mode=mode)
+
+
+def extract_blocks(layers, layer_names):
+    blocks, current_block, block_names = [], [], []
+    scale_factor, out_channels = -1, -1
+    depth_idx, relu_idx, conv_idx = 1, 1, 1
+    for layer in layers:
+        name = ''
+        if isinstance(layer, nn.Conv2d):
+            name = f'conv{depth_idx}_{conv_idx}'
+            current_out_channels = layer.out_channels
+            conv_idx += 1
+        elif isinstance(layer, nn.ReLU):
+            name = f'relu{depth_idx}_{relu_idx}'
+            relu_idx += 1
+        elif isinstance(layer, nn.AvgPool2d) or isinstance(layer, nn.MaxPool2d):
+            name = f'pool{depth_idx}'
+            depth_idx += 1
+            conv_idx = 1
+            relu_idx = 1
+        else:
+            warnings.warn(f' Unexpected layer type: {type(layer)}')
+
+        current_block.append(layer)
+        if name in layer_names:
+            blocks.append(nn.Sequential(*current_block))
+            block_names.append(name)
+            scale_factor = 1 * 2 ** (depth_idx - 1)
+            out_channels = current_out_channels
+            current_block = []
+
+    return blocks, block_names, scale_factor, out_channels
