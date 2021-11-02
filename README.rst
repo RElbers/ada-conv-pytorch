@@ -10,9 +10,9 @@ Disclaimer: I have not trained the model the full number of iterations yet, this
 
 Architecture (from the original paper):
 
-.. image:: https://raw.githubusercontent.com/RElbers/ada-conv-pytorch/master/imgs/arch01.png
+.. image:: https://raw.githubusercontent.com/RElbers/ada-conv-pytorch/master/imgs/arch_01.png
 
-.. image:: https://raw.githubusercontent.com/RElbers/ada-conv-pytorch/master/imgs/arch02.png
+.. image:: https://raw.githubusercontent.com/RElbers/ada-conv-pytorch/master/imgs/arch_02.png
 
 
 Preliminary results after training 45k iterations:
