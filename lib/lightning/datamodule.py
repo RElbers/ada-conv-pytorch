@@ -15,16 +15,24 @@ class DataModule(pl.LightningDataModule):
     @staticmethod
     def add_argparse_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--content', type=str, default=r'C:\[Datasets]\MSCOCO\train2017')
-        parser.add_argument('--style', type=str, default=r'C:\[Datasets]\WikiArt\train')
-        parser.add_argument('--test-content', type=str)
-        parser.add_argument('--test-style', type=str)
+        parser.add_argument('--content', type=str, default='./data/MSCOCO/train2017',
+                            help='Directory with content images.')
+        parser.add_argument('--style', type=str, default='./data/WikiArt/train',
+                            help='Directory with style images.')
+        parser.add_argument('--test-content', type=str,
+                            help='Directory with test content images (or path to single image). If not set, one random batch of the training images is used.')
+        parser.add_argument('--test-style', type=str,
+                            help='Directory with test style images (or path to single image). If not set, one random batch of the training images is used.')
         parser.add_argument('--batch-size', type=int, default=8)
 
         return parser
 
     def __init__(self, content, style, batch_size, test_content=None, test_style=None, **_):
         super().__init__()
+        if not Path(content).exists():
+            raise Exception(f'Path used for content images does not exist: "{Path(content)}"')
+        if not Path(style).exists():
+            raise Exception(f'Path used for style images does not exist: "{Path(style)}"')
 
         content_files, test_content_files = self.get_files(content, test_content, batch_size)
         style_files, test_style_files = self.get_files(style, test_style, batch_size)
