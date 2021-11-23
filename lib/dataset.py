@@ -25,17 +25,21 @@ def load(file):
     return img
 
 
-def style_transforms():
+def style_transforms(size=256):
     # Style images must be 256x256 for AdaConv
     return Compose([
-        Resize(size=256),  # Resize to keep aspect ratio
-        CenterCrop(size=(256, 256)),  # Center crop to square
+        Resize(size=size),  # Resize to keep aspect ratio
+        CenterCrop(size=(size, size)),  # Center crop to square
         ToTensor()])
 
 
-def content_transforms():
-    # Content images have no size restrictions
-    return ToTensor()
+def content_transforms(min_size=None):
+    # min_size is optional as content images have no size restrictions
+    transforms = []
+    if min_size:
+        transforms.append(Resize(size=min_size))
+    transforms.append(ToTensor())
+    return Compose(transforms)
 
 
 class StylizationDataset(Dataset):
@@ -90,5 +94,4 @@ class EndlessDataset(IterableDataset):
                 yield self.dataset[idx]
             except Exception as e:
                 files = self.dataset.files_at_index(idx)
-                warnings.warn(str(e))
-                warnings.warn(f'{str(e)}\n\tFiles: [{str(files[0])}, {str(files[1])}]')
+                warnings.warn(f'\n{str(e)}\n\tFiles: [{str(files[0])}, {str(files[1])}]')

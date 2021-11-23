@@ -19,11 +19,12 @@ class DataModule(pl.LightningDataModule):
                             help='Directory with content images.')
         parser.add_argument('--style', type=str, default='./data/WikiArt/train',
                             help='Directory with style images.')
-        parser.add_argument('--test-content', type=str,
-                            help='Directory with test content images (or path to single image). If not set, one random batch of the training images is used.')
-        parser.add_argument('--test-style', type=str,
-                            help='Directory with test style images (or path to single image). If not set, one random batch of the training images is used.')
-        parser.add_argument('--batch-size', type=int, default=8)
+        parser.add_argument('--test-content', type=str, default='./test_images/content',
+                            help='Directory with test content images (or path to single image). If not set, takes 5 random train content images.')
+        parser.add_argument('--test-style', type=str, default='./test_images/style',
+                            help='Directory with test style images (or path to single image). If not set, takes 5 random train style images.')
+        parser.add_argument('--batch-size', type=int, default=8,
+                            help='Training batch size.')
 
         return parser
 
@@ -46,9 +47,7 @@ class DataModule(pl.LightningDataModule):
         self.test_dataset = StylizationDataset(test_content_files, test_style_files,
                                                style_transform=test_transforms['style'],
                                                content_transform=test_transforms['content'])
-
         self.batch_size = batch_size
-        self.test_batch_size = min(len(test_content_files), len(test_style_files), batch_size)
 
     def train_transforms(self):
         return {
@@ -67,26 +66,20 @@ class DataModule(pl.LightningDataModule):
     def test_transforms(self):
         return {
             'content': transforms.Compose([
-                # Batched images must have same size
-                # CenterCrop gives better impression how full image lib will look like
-                transforms.CenterCrop(size=(256, 256)),
-                # Add base transforms
+                transforms.CenterCrop(256),
                 dataset.content_transforms(),
             ]),
-            'style': transforms.Compose([
-                # Add base transforms
-                dataset.style_transforms(),
-            ])
+            'style': dataset.style_transforms(),
         }
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset, batch_size=self.batch_size)
 
     def val_dataloader(self):
-        return DataLoader(self.test_dataset, batch_size=self.test_batch_size)
+        return DataLoader(self.test_dataset, batch_size=1)
 
     def test_dataloader(self):
-        return DataLoader(self.test_dataset, batch_size=self.test_batch_size)
+        return DataLoader(self.test_dataset, batch_size=1)
 
     def transfer_batch_to_device(self, batch, device):
         for k, v in batch.items():
@@ -101,11 +94,11 @@ class DataModule(pl.LightningDataModule):
         pass
 
     @staticmethod
-    def get_files(train_path, test_path, batch_size):
+    def get_files(train_path, test_path, test_size=5):
         train_files = files_in(train_path)
 
         if test_path is None:
-            train_files, test_files = train_test_split(train_files, test_size=batch_size)
+            train_files, test_files = train_test_split(train_files, test_size=test_size)
         else:
             if Path(test_path).is_dir():
                 test_files = files_in(test_path)

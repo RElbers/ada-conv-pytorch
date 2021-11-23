@@ -1,12 +1,16 @@
 from argparse import ArgumentParser
+from math import sqrt
+from statistics import mean
 
 import pytorch_lightning as pl
 import torch
+from torch.optim import Adam
+from torch.optim.lr_scheduler import LambdaLR
 from torchvision.utils import make_grid
 
-from lib.nn.adaconv.adaconv_model import AdaConvModel
-from lib.nn.adain.adain_model import AdaINModel
-from lib.nn.loss import MomentMatchingStyleLoss, GramStyleLoss, CMDStyleLoss, MSEContentLoss
+from lib.adaconv.adaconv_model import AdaConvModel
+from lib.adain.adain_model import AdaINModel
+from lib.loss import MomentMatchingStyleLoss, GramStyleLoss, CMDStyleLoss, MSEContentLoss
 
 
 class LightningModel(pl.LightningModule):
@@ -16,15 +20,15 @@ class LightningModel(pl.LightningModule):
         parser.add_argument('--model-type', type=str, default='adaconv', choices=['adain', 'adaconv'])
 
         # Losses
+        # mm = Moment Matching, gram = Gram matrix based, cmd = Central Moment Discrepancy
         parser.add_argument('--style-loss', type=str, default='mm', choices=['mm', 'gram', 'cmd'])
-        parser.add_argument('--style-loss-weight', type=float, default=10.0)
+        parser.add_argument('--style-weight', type=float, default=10.0)
         parser.add_argument('--content-loss', type=str, default='mse', choices=['mse'])
-        parser.add_argument('--content-loss-weight', type=float, default=1.0)
+        parser.add_argument('--content-weight', type=float, default=1.0)
 
         # Optimizer
-        parser.add_argument('--lr', type=float, default=0.00003)
-        # Decays to from 0.0003 to 0.00001 in 160_000 iterations
-        parser.add_argument('--lr-decay', type=float, default=0.99998)
+        parser.add_argument('--lr', type=float, default=0.0001)
+        parser.add_argument('--lr-decay', type=float, default=0.00005)
 
         # Add params of other models
         parser = AdaINModel.add_argparse_args(parser)
@@ -34,76 +38,101 @@ class LightningModel(pl.LightningModule):
     def __init__(self,
                  model_type,
                  alpha,
-                 style_img_size, style_descriptor_depth, predicted_kernel_size,
-                 style_loss, style_loss_weight,
-                 content_loss, content_loss_weight,
+                 style_size, style_channels, kernel_size,
+                 style_loss, style_weight,
+                 content_loss, content_weight,
                  lr, lr_decay,
                  **_):
         super().__init__()
         self.save_hyperparameters()
 
-        self.lr_decay = lr_decay
         self.lr = lr
+        self.lr_decay = lr_decay
+        self.style_weight = style_weight
+        self.content_weight = content_weight
 
         # Style loss
-        loss_terms = {}
         if style_loss == 'mm':
-            loss_terms['style'] = (MomentMatchingStyleLoss(), style_loss_weight)
+            self.style_loss = MomentMatchingStyleLoss()
         elif style_loss == 'gram':
-            loss_terms['style'] = (GramStyleLoss(), style_loss_weight)
+            self.style_loss = GramStyleLoss()
         elif style_loss == 'cmd':
-            loss_terms['style'] = (CMDStyleLoss(), style_loss_weight)
+            self.style_loss = CMDStyleLoss()
         else:
             raise ValueError('style_loss')
 
         # Content loss
         if content_loss == 'mse':
-            loss_terms['content'] = (MSEContentLoss(), content_loss_weight)
+            self.content_loss = MSEContentLoss()
         else:
             raise ValueError('content_loss')
 
         # Model type
         if model_type == 'adain':
-            self.model = AdaINModel(loss_terms, alpha)
+            self.model = AdaINModel(alpha)
         elif model_type == 'adaconv':
-            self.model = AdaConvModel(loss_terms,
-                                      style_img_size,
-                                      style_descriptor_depth,
-                                      predicted_kernel_size)
+            self.model = AdaConvModel(style_size, style_channels, kernel_size)
         else:
             raise ValueError('model_type')
 
-    def forward(self, content, style,with_embeddings=False):
-        return self.model(content, style,with_embeddings=False)
+    def forward(self, content, style, return_embeddings=False):
+        return self.model(content, style, return_embeddings)
 
     def training_step(self, batch, batch_idx):
-        loss = self.shared_step(batch, 'train')
-        return loss
+        return self.shared_step(batch, 'train')
 
     def validation_step(self, batch, batch_idx):
-        self.shared_step(batch, 'val')
+        return self.shared_step(batch, 'val')
 
     def shared_step(self, batch, step):
         content, style = batch['content'], batch['style']
-        loss_terms, output = self.model.loss(content, style)
+        output, embeddings = self.model(content, style, return_embeddings=True)
+        content_loss, style_loss = self.loss(embeddings)
 
         # Log metrics
-        for name, loss in loss_terms.items():
-            self.log(rf'{step}/loss_{name}', loss.item(), prog_bar=step == 'train')
+        self.log(rf'{step}/loss_style', style_loss.item(), prog_bar=step == 'train')
+        self.log(rf'{step}/loss_content', content_loss.item(), prog_bar=step == 'train')
 
-        # Log images
+        # Return output only for validation step
         if step == 'val':
-            imgs = zip(content, style, output)
-            imgs = [img for triple in imgs for img in triple]
-            grid = make_grid(imgs, nrow=3, padding=0)
-            logger = self.logger.experiment
-            logger.add_image(rf'{step}_img', grid, global_step=self.global_step + 1)
+            return {
+                'loss': content_loss + style_loss,
+                'output': output,
+            }
+        return content_loss + style_loss
 
-        return sum(loss_terms.values())
+    def validation_epoch_end(self, outputs):
+        if self.global_step == 0:
+            return
+
+        with torch.no_grad():
+            imgs = [x['output'] for x in outputs]
+            imgs = [img for triple in imgs for img in triple]
+            nrow = int(sqrt(len(imgs)))
+            grid = make_grid(imgs, nrow=nrow, padding=0)
+            logger = self.logger.experiment
+            logger.add_image(rf'val_img', grid, global_step=self.global_step + 1)
+
+    def loss(self, embeddings):
+        # Content
+        content_loss = self.content_loss(embeddings['content'][-1], embeddings['output'][-1])
+
+        # Style
+        style_loss = []
+        for (style_features, output_features) in zip(embeddings['style'], embeddings['output']):
+            style_loss.append(self.style_loss(style_features, output_features))
+        style_loss = sum(style_loss)
+
+        return self.content_weight * content_loss, self.style_weight * style_loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
-        lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=self.lr_decay)
+        optimizer = Adam(self.parameters(), lr=self.lr)
+
+        def lr_lambda(iter):
+            return 1 / (1 + 0.0002 * iter)
+
+        lr_scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
+
         return {
             'optimizer': optimizer,
             'lr_scheduler': {

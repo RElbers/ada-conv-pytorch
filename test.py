@@ -29,6 +29,7 @@ def parse_args():
     parser.add_argument('--style-dir', type=str, default='./test_images/style')
     parser.add_argument('--output-dir', type=str, default='./test_images/output')
     parser.add_argument('--model', type=str, default='./model.ckpt')
+    parser.add_argument('--content-size', type=int, default=256)
 
     return vars(parser.parse_args())
 
@@ -45,17 +46,18 @@ if __name__ == '__main__':
     model = LightningModel.load_from_checkpoint(checkpoint_path=args['model'])
     model = model.to(torch.device("cuda:0" if torch.cuda.is_available() else "cpu"))
     model.eval()
+    content_size = args['content_size']
 
     with torch.no_grad():
         pbar = tqdm(total=len(content_files) * len(style_files))
 
         imgs = [dataset.style_transforms()(dataset.load(f)) for f in style_files]
         for i, content in enumerate(content_files):
-            imgs.append(dataset.content_transforms()(dataset.load(content)))
+            imgs.append(dataset.content_transforms(content_size)(dataset.load(content)))
 
             for j, style in enumerate(style_files):
-                output = stylize_image(model, content, style)
-                dataset.save(output, output_dir.joinpath(rf'{i:02}--{j:02}.png'))
+                output = stylize_image(model, content, style, content_size=content_size)
+                dataset.save(output, output_dir.joinpath(rf'{i:02}--{j:02}.jpg'))
                 imgs.append(output)
                 pbar.update(1)
 
@@ -65,4 +67,4 @@ if __name__ == '__main__':
         imgs = [resize(img, [avg_h, avg_w]) for img in imgs]
         imgs = [torch.ones((3, avg_h, avg_w)), *imgs]
         grid = make_grid(imgs, nrow=len(style_files) + 1, padding=16, pad_value=1)
-        dataset.save(grid, output_dir.joinpath('table.png'))
+        dataset.save(grid, output_dir.joinpath('table.jpg'))

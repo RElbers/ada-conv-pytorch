@@ -6,13 +6,13 @@ from lib import dataset
 from lib.lightning.lightningmodel import LightningModel
 
 
-def stylize_image(model, content_file, style_file):
+def stylize_image(model, content_file, style_file, content_size=None):
     device = next(model.parameters()).device
 
     content = dataset.load(content_file)
     style = dataset.load(style_file)
 
-    content = dataset.content_transforms()(content)
+    content = dataset.content_transforms(content_size)(content)
     style = dataset.style_transforms()(style)
 
     content = content.to(device).unsqueeze(0)
