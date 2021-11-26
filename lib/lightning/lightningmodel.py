@@ -17,6 +17,10 @@ class LightningModel(pl.LightningModule):
     @staticmethod
     def add_argparse_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
+
+        # Add params of other models
+        parser = AdaConvModel.add_argparse_args(parser)
+        parser = AdaINModel.add_argparse_args(parser)
         parser.add_argument('--model-type', type=str, default='adaconv', choices=['adain', 'adaconv'])
 
         # Losses
@@ -29,10 +33,6 @@ class LightningModel(pl.LightningModule):
         # Optimizer
         parser.add_argument('--lr', type=float, default=0.0001)
         parser.add_argument('--lr-decay', type=float, default=0.00005)
-
-        # Add params of other models
-        parser = AdaINModel.add_argparse_args(parser)
-        parser = AdaConvModel.add_argparse_args(parser)
         return parser
 
     def __init__(self,

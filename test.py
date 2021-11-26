@@ -1,3 +1,4 @@
+import argparse
 from argparse import ArgumentParser
 from pathlib import Path
 
@@ -24,12 +25,14 @@ def resize(img, size):
 
 
 def parse_args():
-    parser = ArgumentParser()
+    parser = ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--content-dir', type=str, default='./test_images/content')
     parser.add_argument('--style-dir', type=str, default='./test_images/style')
     parser.add_argument('--output-dir', type=str, default='./test_images/output')
     parser.add_argument('--model', type=str, default='./model.ckpt')
-    parser.add_argument('--content-size', type=int, default=256)
+    parser.add_argument('--save-as', type=str, default='png')
+    parser.add_argument('--content-size', type=int, default=512,
+                        help='Content images are resized such that the smaller edge has this size.')
 
     return vars(parser.parse_args())
 

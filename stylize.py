@@ -1,3 +1,4 @@
+import argparse
 from argparse import ArgumentParser
 
 import torch
@@ -23,7 +24,7 @@ def stylize_image(model, content_file, style_file, content_size=None):
 
 
 def parse_args():
-    parser = ArgumentParser()
+    parser = ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--content', type=str, default='./content.png')
     parser.add_argument('--style', type=str, default='./style.png')
     parser.add_argument('--output', type=str, default='./output.png')

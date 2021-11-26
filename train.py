@@ -1,3 +1,4 @@
+import argparse
 from argparse import ArgumentParser
 from pathlib import Path
 
@@ -54,14 +55,20 @@ class TensorboardImageLogger(TensorBoardLogger):
 def parse_args():
     # Init parser
     parser = ArgumentParser()
-    parser.add_argument('--iterations', type=int, default=160_000)
-    parser.add_argument('--log-dir', type=str, default='./')
-    parser.add_argument('--checkpoint', type=str)
-    parser.add_argument('--val-interval', type=int, default=250)
+    parser.add_argument('--iterations', type=int, default=160_000,
+                        help='The number of training iterations.')
+    parser.add_argument('--log-dir', type=str, default='./',
+                        help='The directory where the logs are saved to.')
+    parser.add_argument('--checkpoint', type=str,
+                        help='Resume training from a checkpoint file.')
+    parser.add_argument('--val-interval', type=int, default=1000,
+                        help='How often a validation step is performed. '
+                             'Applies the model to several fixed images and calculate the loss.')
 
     parser = DataModule.add_argparse_args(parser)
     parser = LightningModel.add_argparse_args(parser)
 
+    parser.formatter_class = argparse.ArgumentDefaultsHelpFormatter
     return vars(parser.parse_args())
 
 
