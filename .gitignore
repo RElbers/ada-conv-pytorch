@@ -7,3 +7,4 @@ imgs/
 logs/
 *.ckpt
 .logs_old/
+test_images/output/
