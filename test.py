@@ -39,6 +39,9 @@ def parse_args():
 
 if __name__ == '__main__':
     args = parse_args()
+    ext = args['save_as']
+    content_transform = dataset.content_transforms(args['content_size'])
+    style_transform = dataset.style_transforms()
 
     content_files = dataset.files_in(args['content_dir'])
     style_files = dataset.files_in(args['style_dir'])
@@ -49,18 +52,21 @@ if __name__ == '__main__':
     model = LightningModel.load_from_checkpoint(checkpoint_path=args['model'])
     model = model.to(torch.device("cuda:0" if torch.cuda.is_available() else "cpu"))
     model.eval()
-    content_size = args['content_size']
 
+    pbar = tqdm(total=len(content_files) * len(style_files))
     with torch.no_grad():
-        pbar = tqdm(total=len(content_files) * len(style_files))
+        # Add style images at top row
+        imgs = [style_transform(dataset.load(f)) for f in style_files]
 
-        imgs = [dataset.style_transforms()(dataset.load(f)) for f in style_files]
         for i, content in enumerate(content_files):
-            imgs.append(dataset.content_transforms(content_size)(dataset.load(content)))
+            # Add content images at left column
+            imgs.append(content_transform(dataset.load(content)))
 
             for j, style in enumerate(style_files):
-                output = stylize_image(model, content, style, content_size=content_size)
-                dataset.save(output, output_dir.joinpath(rf'{i:02}--{j:02}.jpg'))
+                # Stylize content-style pair
+                output = stylize_image(model, content, style, content_size=args['content_size'])
+
+                dataset.save(output, output_dir.joinpath(f'{i:02}--{j:02}.{ext}'))
                 imgs.append(output)
                 pbar.update(1)
 
@@ -68,6 +74,6 @@ if __name__ == '__main__':
         avg_h = int(sum([img.size(1) for img in imgs]) / len(imgs))
         avg_w = int(sum([img.size(2) for img in imgs]) / len(imgs))
         imgs = [resize(img, [avg_h, avg_w]) for img in imgs]
-        imgs = [torch.ones((3, avg_h, avg_w)), *imgs]
+        imgs = [torch.ones((3, avg_h, avg_w)), *imgs]  # Add empty top left square.
         grid = make_grid(imgs, nrow=len(style_files) + 1, padding=16, pad_value=1)
-        dataset.save(grid, output_dir.joinpath('table.jpg'))
+        dataset.save(grid, output_dir.joinpath(f'table.{ext}'))
